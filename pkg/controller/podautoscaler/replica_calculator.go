@@ -25,6 +25,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
@@ -360,7 +361,26 @@ func (c *ReplicaCalculator) GetExternalPerPodMetricReplicas(currentReplicas int3
 func groupPods(pods []*v1.Pod, metrics metricsclient.PodMetricsInfo, resource v1.ResourceName, cpuInitializationPeriod, delayOfInitialReadinessStatus time.Duration) (readyPodCount int, ignoredPods sets.String, missingPods sets.String) {
 	missingPods = sets.NewString()
 	ignoredPods = sets.NewString()
+
+	// During the deployment update there might be several pod generations alive.
+	// Since our scale will only affect the last generation - detect it and add others to ignore list
+	var newestOwner types.UID
+	var latestCreationTimestamp *metav1.Time
 	for _, pod := range pods {
+		if latestCreationTimestamp == nil || latestCreationTimestamp.Before(&pod.CreationTimestamp) {
+			if len(pod.OwnerReferences) > 0 {
+				latestCreationTimestamp = &pod.CreationTimestamp
+				newestOwner = pod.OwnerReferences[0].UID
+			}
+		}
+	}
+
+	for _, pod := range pods {
+		if len(pod.OwnerReferences) > 0 && pod.OwnerReferences[0].UID != newestOwner {
+			ignoredPods.Insert(pod.Name)
+			continue
+		}
+
 		if pod.DeletionTimestamp != nil || pod.Status.Phase == v1.PodFailed {
 			continue
 		}

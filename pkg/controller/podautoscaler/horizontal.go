@@ -235,7 +235,7 @@ func (a *HorizontalController) processNextWorkItem() bool {
 func (a *HorizontalController) computeReplicasForMetrics(hpa *autoscalingv2.HorizontalPodAutoscaler, scale *autoscalingv1.Scale,
 	metricSpecs []autoscalingv2.MetricSpec) (replicas int32, metric string, statuses []autoscalingv2.MetricStatus, timestamp time.Time, err error) {
 
-	currentReplicas := scale.Status.Replicas
+	currentReplicas := scale.Spec.Replicas
 
 	statuses = make([]autoscalingv2.MetricStatus, len(metricSpecs))
 
@@ -550,7 +550,7 @@ func (a *HorizontalController) reconcileAutoscaler(hpav1Shared *autoscalingv1.Ho
 		return fmt.Errorf("failed to query scale subresource for %s: %v", reference, err)
 	}
 	setCondition(hpa, autoscalingv2.AbleToScale, v1.ConditionTrue, "SucceededGetScale", "the HPA controller was able to get the target's current scale")
-	currentReplicas := scale.Status.Replicas
+	currentReplicas := scale.Spec.Replicas
 	a.recordInitialRecommendation(currentReplicas, key)
 
 	var metricStatuses []autoscalingv2.MetricStatus
@@ -719,6 +719,7 @@ func convertDesiredReplicasWithRules(currentReplicas, desiredReplicas, hpaMinRep
 
 	if desiredReplicas < minimumAllowedReplicas {
 		possibleLimitingCondition = "TooFewReplicas"
+		possibleLimitingReason = "the desired replica count is less than the minimum replica count"
 
 		return minimumAllowedReplicas, possibleLimitingCondition, possibleLimitingReason
 	} else if desiredReplicas > maximumAllowedReplicas {
